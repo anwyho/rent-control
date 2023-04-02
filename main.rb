@@ -62,6 +62,11 @@ doc = T.unsafe(Object.const_get :Nokogiri)::HTML File.read RENT_DUMP_FILENAME
 puts 'Done.'
 
 
+# Example `tr`s: 
+  # 3/22/2023
+  # Monthly Parking Discount	March Credit	-$30.65	-$736.75
+  # 3/1/2023
+  # RUBS Water	WATER	$45.87	-$706.10
 print 'Parsing LineItems...'
 items = T.let([], T::Array[LineItem])
 first_date = T.let(nil, T.nilable(Date))
@@ -79,6 +84,7 @@ rows.map { |tr|
     current_date = date
   when 4
     # ["Credit Card Payment", "Credit Card", "-$165.45", "$0.00"]
+    # `unshift` to sort items by ascending date
     items.unshift LineItem.from_row row, date: T.must(current_date)
   else raise StandardError, row
   end
