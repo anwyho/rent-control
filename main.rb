@@ -13,8 +13,32 @@ RENT_DUMP_FILENAME = './tmp/2022-03-01_2023-04-01'
 class LineItem < T::Struct
   extend T::Sig
 
+  class Activity < T::Enum
+    extend T::Helpers
+    enums do
+      Check = new "Check"
+      CreditCard = new "Credit Card Payment"
+      Rent = new "Monthly Apartment Rent"
+      Parking = new "Monthly Reserved Parking"
+      ParkingConcession = new "Monthly Parking Discount"
+      RubsBillingFee = new "RUBS Billing Fee"
+      RubsGas = new "RUBS Gas/Central Boiler"
+      RubsPest = new "RUBS Pest"
+      RubsSewer = new "RUBS Sewer"
+      RubsTrash = new "RUBS Trash"
+      RubsWater = new "RUBS Water"
+      # Package storage
+      Misc = new "Other Miscel. Income"
+    end
+
+    Payment = T.type_alias { T.any Check, CreditCard }
+    Utilities = T.type_alias { 
+      T.any RubsBillingFee, RubsGas, RubsPest, RubsSewer, RubsTrash, RubsWater, Misc
+    }
+  end
+
   const :date, Date
-  const :activity, String
+  const :activity, Activity
   const :description, String
   const :amount, Numeric
   const :balance, Numeric
@@ -23,18 +47,18 @@ class LineItem < T::Struct
   def self.from_row(row, date:)
     activity, description, amount_s, balance_s = row
     new(
-        activity: T.must(activity), 
-        description: T.must(description), 
-        amount:   T.must(amount_s).gsub(/[^-\d\.]/, '').to_f,
-        balance: T.must(balance_s).gsub(/[^-\d\.]/, '').to_f,
-        date: date,
+      activity: Activity.deserialize(activity),
+      description: T.must(description), 
+      amount:   T.must(amount_s).gsub(/[^-\d\.]/, '').to_f,
+      balance: T.must(balance_s).gsub(/[^-\d\.]/, '').to_f,
+      date: date,
     )
   end
 end
 
 print 'Parsing document...'
 # Makes Sorbet happy and is also kinda funny
-doc = T.unsafe(Object.const_get(:Nokogiri))::HTML(File.read(RENT_DUMP_FILENAME))
+doc = T.unsafe(Object.const_get :Nokogiri)::HTML File.read RENT_DUMP_FILENAME
 puts 'Done.'
 
 
@@ -50,12 +74,12 @@ rows.map { |tr|
   when 1
     # ["7/6/2022"]
     month, day, year = row.first.split('/').map(&:to_i)
-    date = Date.new(year, month, day)
+    date = Date.new year, month, day
     first_date ||= date
     current_date = date
   when 4
     # ["Credit Card Payment", "Credit Card", "-$165.45", "$0.00"]
-    items << LineItem.from_row(row, date: T.must(current_date))
+    items.unshift LineItem.from_row row, date: T.must(current_date)
   else raise StandardError, row
   end
 }
@@ -63,12 +87,11 @@ puts 'Done.'
 puts "Parsed #{items.count} items from #{current_date} to #{first_date}."
 
 
-items = items.reverse
 print 'Validating LineItems...'
 current_item, *rest = items
 raise if current_item.nil? || rest.nil? # for Sorbet flow-sensitivity
 rest.each do |next_item| 
-  new_balance = (current_item.balance + next_item.amount).round(2)
+  new_balance = (current_item.balance + next_item.amount).round 2
   if new_balance == next_item.balance
     current_item = next_item
   else raise StandardError, [current_item.date, new_balance, next_item.balance]
@@ -76,3 +99,8 @@ rest.each do |next_item|
 end
 puts 'Done.'
 
+
+# TODO: hypothetical Josh-Anthony payment
+# TODO: actual Josh-Anthony payment
+# TODO: how to validate it's correct
+# TODO: future things
